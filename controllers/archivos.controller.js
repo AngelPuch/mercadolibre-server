@@ -40,7 +40,7 @@ self.get = async function (req, res, next) {
 self.create = async function (req, res, next) {
   try {
     if (req.file === undefined)
-      return res.status(400).json("El archivo es obligatorio.");
+      return res.status(400).json({ mensaje: "El archivo es obligatorio." });
     let binario = null;
     let indb = false;
     if (process.env.FILES_IN_BD === "true") {
@@ -57,14 +57,12 @@ self.create = async function (req, res, next) {
       datos: binario,
     });
     await req.bitacora("archivos.crear", data.id);
-    res
-      .status(201)
-      .json({
-        id: data.id,
-        mime: req.file.mimetype,
-        indb,
-        nombre: req.file.filename,
-      });
+    res.status(201).json({
+      id: data.id,
+      mime: req.file.mimetype,
+      indb,
+      nombre: req.file.filename,
+    });
   } catch (error) {
     next(error);
   }
@@ -73,7 +71,7 @@ self.create = async function (req, res, next) {
 self.update = async function (req, res, next) {
   try {
     if (req.file === undefined)
-      return res.status(400).json("El archivo es obligatorio.");
+      return res.status(400).json({ mensaje: "El archivo es obligatorio." });
     const id = req.params.id;
     const imagen = await archivo.findByPk(id);
     if (!imagen) {

@@ -1,10 +1,5 @@
 const { categoria } = require("../models");
-const { body, validationResult } = require("express-validator");
 const self = {};
-
-self.categoriaValidator = [
-  body("nombre", "El campo {0} es obligatorio").not().isEmpty(),
-];
 
 self.getAll = async function (req, res, next) {
   try {
@@ -31,9 +26,7 @@ self.get = async function (req, res, next) {
 
 self.create = async function (req, res, next) {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) throw new Error(JSON.stringify(errors));
-    const data = await categoria.create({ nombre: req.body.nombre });
+    const data = await categoria.create({ nombre: req.body.nombre.trim() });
     await req.bitacora("categoria.crear", data.id);
     res.status(201).json(data);
   } catch (error) {
@@ -43,11 +36,13 @@ self.create = async function (req, res, next) {
 
 self.update = async function (req, res, next) {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) throw new Error(JSON.stringify(errors));
     const id = req.params.id;
-    const data = await categoria.update(req.body, { where: { id } });
-    if (data[0] === 0) return res.status(404).send();
+    const existente = await categoria.findByPk(id);
+    if (!existente) return res.status(404).send();
+    await categoria.update(
+      { nombre: req.body.nombre.trim() },
+      { where: { id } },
+    );
     await req.bitacora("categoria.editar", id);
     res.status(204).send();
   } catch (error) {
@@ -60,7 +55,11 @@ self.delete = async function (req, res, next) {
     const id = req.params.id;
     let data = await categoria.findByPk(id);
     if (!data) return res.status(404).send();
-    if (data.protegida) return res.status(400).send();
+    if (data.protegida) {
+      return res
+        .status(400)
+        .json({ mensaje: "No se pueden eliminar categorías protegidas." });
+    }
     data = await categoria.destroy({ where: { id } });
     if (data === 1) {
       await req.bitacora("categoria.eliminar", id);

@@ -1,16 +1,21 @@
-const { producto, categoria, Sequelize } = require("../models");
-const { body, validationResult } = require("express-validator");
+const { producto, categoria, archivo, Sequelize } = require("../models");
 const Op = Sequelize.Op;
 const self = {};
 
-self.productoValidator = [
-  body("titulo", "El campo {0} es obligatorio").not().isEmpty(),
-  body("descripcion", "El campo {0} es obligatorio").not().isEmpty(),
-  body("precio", "El campo {0} es obligatorio")
-    .not()
-    .isEmpty()
-    .isDecimal({ force_decimal: false }),
-];
+const extraerIdsCategorias = (categoriasInput) => {
+  if (!Array.isArray(categoriasInput)) return null;
+  return [
+    ...new Set(
+      categoriasInput.map((item) =>
+        Number(
+          typeof item === "object" && item !== null
+            ? (item.categoriaId ?? item.categoriaid ?? item.id)
+            : item,
+        ),
+      ),
+    ),
+  ];
+};
 
 self.getAll = async function (req, res, next) {
   try {
@@ -66,14 +71,43 @@ self.get = async function (req, res, next) {
 
 self.create = async function (req, res, next) {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) throw new Error(JSON.stringify(errors));
+    const archivoid =
+      req.body.archivoid !== undefined &&
+      req.body.archivoid !== null &&
+      req.body.archivoid !== ""
+        ? Number(req.body.archivoid)
+        : null;
+    if (archivoid !== null) {
+      const archivoExistente = await archivo.findByPk(archivoid);
+      if (!archivoExistente) {
+        return res
+          .status(400)
+          .json({ mensaje: "El archivo especificado no existe." });
+      }
+    }
+
+    let categoriasEncontradas = null;
+    const idsCategorias = extraerIdsCategorias(req.body.categorias);
+    if (idsCategorias !== null && idsCategorias.length > 0) {
+      categoriasEncontradas = await categoria.findAll({
+        where: { id: idsCategorias },
+      });
+      if (categoriasEncontradas.length !== idsCategorias.length) {
+        return res.status(400).json({
+          mensaje: "Una o más categorías especificadas no existen.",
+        });
+      }
+    }
+
     const data = await producto.create({
-      titulo: req.body.titulo,
-      descripcion: req.body.descripcion,
+      titulo: req.body.titulo.trim(),
+      descripcion: req.body.descripcion.trim(),
       precio: req.body.precio,
-      archivoid: req.body.archivoid || null,
+      archivoid,
     });
+    if (categoriasEncontradas !== null) {
+      await data.setCategorias(categoriasEncontradas);
+    }
     await req.bitacora("producto.crear", data.id);
     res.status(201).json(data);
   } catch (error) {
@@ -83,11 +117,54 @@ self.create = async function (req, res, next) {
 
 self.update = async function (req, res, next) {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) throw new Error(JSON.stringify(errors));
     const id = req.params.id;
-    const data = await producto.update(req.body, { where: { id } });
-    if (data[0] === 0) return res.status(404).send();
+    const item = await producto.findByPk(id);
+    if (!item) return res.status(404).send();
+
+    const archivoid =
+      req.body.archivoid !== undefined &&
+      req.body.archivoid !== null &&
+      req.body.archivoid !== ""
+        ? Number(req.body.archivoid)
+        : null;
+    if (archivoid !== null) {
+      const archivoExistente = await archivo.findByPk(archivoid);
+      if (!archivoExistente) {
+        return res
+          .status(400)
+          .json({ mensaje: "El archivo especificado no existe." });
+      }
+    }
+
+    let categoriasEncontradas = null;
+    const idsCategorias = extraerIdsCategorias(req.body.categorias);
+    if (idsCategorias !== null) {
+      if (idsCategorias.length > 0) {
+        categoriasEncontradas = await categoria.findAll({
+          where: { id: idsCategorias },
+        });
+        if (categoriasEncontradas.length !== idsCategorias.length) {
+          return res.status(400).json({
+            mensaje: "Una o más categorías especificadas no existen.",
+          });
+        }
+      } else {
+        categoriasEncontradas = [];
+      }
+    }
+
+    await producto.update(
+      {
+        titulo: req.body.titulo.trim(),
+        descripcion: req.body.descripcion.trim(),
+        precio: req.body.precio,
+        archivoid,
+      },
+      { where: { id } },
+    );
+    if (categoriasEncontradas !== null) {
+      await item.setCategorias(categoriasEncontradas);
+    }
     await req.bitacora("producto.editar", id);
     res.status(204).send();
   } catch (error) {
