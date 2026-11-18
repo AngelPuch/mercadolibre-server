@@ -8,11 +8,12 @@ dotenv.config();
 const corsOptions = {
   origin: ["http://localhost:8080", "http://localhost:8081"],
   methods: "GET,PUT,POST,DELETE",
-  exposedHeaders: ["Set-Authorization"],
+  exposedHeaders: ["Set-Authorization", "Retry-After"],
 };
 app.use(cors(corsOptions));
 
-app.use("/api/registro", require("./middlewares/registro.middleware"));
+// Esta ruta aplica sus parsers de 8 KiB antes de los parsers generales.
+app.use("/api/registro", require("./routes/registro.routes"));
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
@@ -27,7 +28,6 @@ app.use("/api/productos", require("./routes/productos.routes"));
 app.use("/api/usuarios", require("./routes/usuarios.routes"));
 app.use("/api/roles", require("./routes/roles.routes"));
 app.use("/api/auth", require("./routes/auth.routes"));
-app.use("/api/registro", require("./routes/registro.routes"));
 app.use("/api/archivos", require("./routes/archivos.routes"));
 app.use("/api/bitacora", require("./routes/bitacora.routes"));
 app.get("/*splat", (req, res) => res.status(404).send("Recurso no encontrado"));

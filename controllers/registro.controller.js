@@ -1,6 +1,6 @@
 const bcrypt = require("bcrypt");
 const crypto = require("crypto");
-const { usuario, rol, Sequelize } = require("../models");
+const { usuario, rol, sequelize, Sequelize } = require("../models");
 const self = {};
 
 self.create = async function (req, res, next) {
@@ -28,18 +28,25 @@ self.create = async function (req, res, next) {
       return next(error);
     }
 
-    const data = await usuario.create(
-      {
-        id: crypto.randomUUID(),
-        nombre,
-        email,
-        passwordhash: await bcrypt.hash(password, 10),
-        rolid: rolUsuario.id,
-        protegido: false,
-      },
+    const passwordhash = await bcrypt.hash(password, 10);
+    const data = await sequelize.transaction(
       { logging: false },
+      async (transaction) => {
+        const nuevo = await usuario.create(
+          {
+            id: crypto.randomUUID(),
+            nombre,
+            email,
+            passwordhash,
+            rolid: rolUsuario.id,
+            protegido: false,
+          },
+          { transaction, logging: false },
+        );
+        await req.bitacora("usuario.registro", nuevo.id, { transaction });
+        return nuevo;
+      },
     );
-    await req.bitacora("usuario.registro", data.id);
     res.status(201).json({
       id: data.id,
       nombre: data.nombre,
