@@ -13,3 +13,30 @@
 - **Peticiones de ejemplo (págs. 64–69):** completé los encabezados Bearer omitidos en algunas solicitudes protegidas y utilicé IDs de ejemplo coherentes para crear, editar y eliminar el mismo registro. Incorporé las peticiones de productos, usuarios y bitácora solicitadas en las instrucciones, además de los ejemplos mostrados de autenticación, categorías y archivos; incluí los dos JPG locales referenciados por las cargas.
 
 Las diferencias de formato del código (sangría, punto y coma, `const` y comentarios) no cambian su funcionamiento. Los modelos, las migraciones y la configuración de conexión ya existentes se conservaron sin modificaciones.
+
+## Límites de login y registro
+
+El middleware `middlewares/rateLimit.middleware.js` exporta `createRateLimiter` y dos instancias independientes. Solo se aplica a `POST /api/auth` y `POST /api/registro`; no existe un límite global para la API ni se limita `GET /api/auth/tiempo`.
+
+Configura estas variables en `.env` antes de iniciar el servidor:
+
+| Variable | Valor predeterminado | Significado |
+| --- | --- | --- |
+| `LOGIN_RATE_LIMIT_MAX` | `30` | Solicitudes de login por IP y ventana |
+| `LOGIN_RATE_LIMIT_WINDOW_MS` | `900000` | Duración de la ventana de login, en milisegundos |
+| `REGISTRO_RATE_LIMIT_MAX` | `20` | Solicitudes de registro por IP y ventana |
+| `REGISTRO_RATE_LIMIT_WINDOW_MS` | `900000` | Duración de la ventana de registro, en milisegundos |
+
+Los valores deben ser enteros positivos seguros. Una configuración inválida impide iniciar el servidor. Cada ventana comienza con la primera solicitud de esa IP y cuenta todos los intentos que llegan al limitador, incluidos los rechazados por validación, credenciales o correo duplicado. En login, los parsers generales conservan su orden y configuración, por lo que sus errores ocurren antes del limitador.
+
+Cada instancia conserva su propio `Map` en memoria, con capacidad predeterminada de 10 000 IP. Los registros expirados se limpian al recibir solicitudes, periódicamente, al consultar una IP expirada y antes de rechazar por capacidad. Cuando la memoria está llena de registros activos, se rechazan nuevas IP sin expulsar las existentes ni reiniciar sus contadores. `createRateLimiter({ windowMs, maxRequests, maxEntries })` permite reutilizar y configurar esta lógica.
+
+Al exceder el límite se devuelve HTTP 429 con `{"mensaje":"Demasiadas solicitudes. Inténtelo más tarde."}` y `Retry-After` en segundos. CORS permite leer ese encabezado desde los orígenes ya autorizados. Se usa exclusivamente `req.ip`, sin leer directamente `X-Forwarded-For` ni activar `trust proxy`. Si se incorpora un proxy, su confianza deberá configurarse explícitamente con las direcciones confiables.
+
+Los contadores se reinician al reiniciar el proceso y **no se comparten entre múltiples procesos o servidores**. Esta implementación no requiere dependencias ni almacenamiento externo.
+
+## Registro atómico y tamaño del cuerpo
+
+`POST /api/registro` conserva sus parsers JSON y URL-encoded de 8 KiB, separados del rate limiting y ejecutados antes de los parsers generales. Un cuerpo excesivo, JSON malformado o entrada inválida devuelve 400 sin incluir valores sensibles. El resto de endpoints conserva sus parsers generales.
+
+La creación del usuario y el evento `usuario.registro` se guardan dentro de la misma transacción Sequelize. `req.bitacora(accion, id, { transaction })` permite compartirla; las llamadas existentes de dos argumentos mantienen su comportamiento. Si falla cualquiera de las escrituras, ambas se revierten. El correo duplicado sigue devolviendo 409, incluso si la restricción única de la base de datos detecta un registro concurrente. El rol `Usuario`, bcrypt y las validaciones de B3 se conservan.

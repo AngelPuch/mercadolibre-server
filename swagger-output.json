@@ -592,7 +592,7 @@
     },
     "/api/auth/": {
       "post": {
-        "description": "",
+        "description": "Login con límite predeterminado de 30 solicitudes por IP cada 15 minutos. Configurable mediante LOGIN_RATE_LIMIT_MAX y LOGIN_RATE_LIMIT_WINDOW_MS. El límite solo aplica a este POST, usa req.ip y no comparte contadores con registro ni con otros procesos.",
         "parameters": [
           {
             "name": "body",
@@ -619,6 +619,25 @@
           },
           "401": {
             "description": "Unauthorized"
+          },
+          "429": {
+            "description": "Límite por IP o capacidad del limitador alcanzados. Los contadores son independientes por endpoint y por proceso.",
+            "headers": {
+              "Retry-After": {
+                "type": "integer",
+                "description": "Segundos antes de volver a intentar.",
+                "minimum": 1
+              }
+            },
+            "schema": {
+              "type": "object",
+              "properties": {
+                "mensaje": {
+                  "type": "string",
+                  "example": "Demasiadas solicitudes. Inténtelo más tarde."
+                }
+              }
+            }
           }
         }
       }
@@ -649,7 +668,7 @@
           "Registro"
         ],
         "summary": "Registrar un cliente sin JWT",
-        "description": "Solo acepta nombre, email y password. Recorta espacios exteriores y convierte el correo a minúsculas. Rechaza cualquier campo adicional, incluidos rol, rolid, id, passwordhash y protegido. Máximo 5 intentos por IP cada 15 minutos y cuerpos de 8 KiB. El límite es local a cada proceso y utiliza req.ip sin confiar en encabezados reenviados por defecto.",
+        "description": "Solo acepta nombre, email y password. Recorta espacios exteriores y convierte el correo a minúsculas. Rechaza cualquier campo adicional, incluidos rol, rolid, id, passwordhash y protegido. Máximo predeterminado de 20 solicitudes por IP cada 15 minutos, configurable mediante REGISTRO_RATE_LIMIT_MAX y REGISTRO_RATE_LIMIT_WINDOW_MS, y cuerpos de 8 KiB. El limitador usa req.ip sin activar trust proxy y sus contadores son independientes de login y de otros procesos. Usuario y evento de bitácora se guardan en una misma transacción: si falla alguna escritura, ambas se revierten.",
         "consumes": [
           "application/json"
         ],
@@ -696,7 +715,7 @@
         ],
         "responses": {
           "201": {
-            "description": "Cliente creado con UUID del servidor, rol Usuario y contraseña almacenada como hash bcrypt. No inicia sesión.",
+            "description": "Cliente y evento de bitácora creados atómicamente. UUID del servidor, rol Usuario y contraseña almacenada como hash bcrypt. No inicia sesión.",
             "schema": {
               "type": "object",
               "additionalProperties": false,
@@ -782,11 +801,12 @@
             }
           },
           "429": {
-            "description": "Límite de intentos por IP o capacidad del limitador alcanzada.",
+            "description": "Límite por IP o capacidad del limitador alcanzados. Los contadores son independientes por endpoint y por proceso.",
             "headers": {
               "Retry-After": {
                 "type": "integer",
-                "description": "Segundos antes de volver a intentar."
+                "description": "Segundos antes de volver a intentar.",
+                "minimum": 1
               }
             },
             "schema": {
@@ -794,11 +814,8 @@
               "properties": {
                 "mensaje": {
                   "type": "string",
-                  "example": "Demasiados intentos de registro. Inténtelo más tarde."
+                  "example": "Demasiadas solicitudes. Inténtelo más tarde."
                 }
-              },
-              "xml": {
-                "name": "main"
               }
             }
           },
