@@ -643,6 +643,199 @@
         }
       }
     },
+    "/api/registro/": {
+      "post": {
+        "tags": [
+          "Registro"
+        ],
+        "summary": "Registrar un cliente sin JWT",
+        "description": "Solo acepta nombre, email y password. Recorta espacios exteriores y convierte el correo a minúsculas. Rechaza cualquier campo adicional, incluidos rol, rolid, id, passwordhash y protegido. Máximo 5 intentos por IP cada 15 minutos y cuerpos de 8 KiB. El límite es local a cada proceso y utiliza req.ip sin confiar en encabezados reenviados por defecto.",
+        "consumes": [
+          "application/json"
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "nombre",
+                "email",
+                "password"
+              ],
+              "properties": {
+                "nombre": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 255,
+                  "example": "Ana López"
+                },
+                "email": {
+                  "type": "string",
+                  "format": "email",
+                  "maxLength": 255,
+                  "example": "ana@example.com"
+                },
+                "password": {
+                  "type": "string",
+                  "format": "password",
+                  "minLength": 8,
+                  "maxLength": 72,
+                  "description": "Política B3: mayúsculas, minúsculas, números y símbolos. Máximo 72 bytes UTF-8 para evitar truncamiento de bcrypt.",
+                  "example": "RegistroSeguro!2026"
+                }
+              }
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Cliente creado con UUID del servidor, rol Usuario y contraseña almacenada como hash bcrypt. No inicia sesión.",
+            "schema": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "nombre",
+                "email",
+                "rol"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "example": "aa1cd07b-388c-42e7-b188-fc51b1c0065e"
+                },
+                "nombre": {
+                  "type": "string",
+                  "example": "Ana López"
+                },
+                "email": {
+                  "type": "string",
+                  "format": "email",
+                  "example": "ana@example.com"
+                },
+                "rol": {
+                  "type": "string",
+                  "enum": [
+                    "Usuario"
+                  ],
+                  "example": "Usuario"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Campos ausentes, tipos, formatos o longitudes inválidos, campos no permitidos, JSON malformado o cuerpo excesivo. Los errores de validación no incluyen los valores enviados.",
+            "schema": {
+              "type": "object",
+              "required": [
+                "mensaje"
+              ],
+              "properties": {
+                "mensaje": {
+                  "type": "string",
+                  "example": "Solo se permiten los campos nombre, email y password."
+                },
+                "errores": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string"
+                      },
+                      "msg": {
+                        "type": "string"
+                      },
+                      "path": {
+                        "type": "string"
+                      },
+                      "location": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Correo duplicado, incluso ante registros concurrentes.",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "mensaje": {
+                  "type": "string",
+                  "example": "El correo electrónico ya está registrado."
+                }
+              },
+              "xml": {
+                "name": "main"
+              }
+            }
+          },
+          "429": {
+            "description": "Límite de intentos por IP o capacidad del limitador alcanzada.",
+            "headers": {
+              "Retry-After": {
+                "type": "integer",
+                "description": "Segundos antes de volver a intentar."
+              }
+            },
+            "schema": {
+              "type": "object",
+              "properties": {
+                "mensaje": {
+                  "type": "string",
+                  "example": "Demasiados intentos de registro. Inténtelo más tarde."
+                }
+              },
+              "xml": {
+                "name": "main"
+              }
+            }
+          },
+          "500": {
+            "description": "Error interno sin datos sensibles ni trazas, incluso en desarrollo.",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "mensaje": {
+                  "type": "string",
+                  "example": "No se ha podido completar el registro. Inténtelo más tarde."
+                }
+              },
+              "xml": {
+                "name": "main"
+              }
+            }
+          },
+          "503": {
+            "description": "Registro temporalmente no disponible.",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "mensaje": {
+                  "type": "string",
+                  "example": "El registro no está disponible. Inténtelo más tarde."
+                }
+              },
+              "xml": {
+                "name": "main"
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
     "/api/archivos/": {
       "get": {
         "description": "",
