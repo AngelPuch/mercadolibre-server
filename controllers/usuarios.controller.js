@@ -70,7 +70,7 @@ self.create = async function (req, res, next) {
       id: data.id,
       email: data.email,
       nombre: data.nombre,
-      rol: rolusuario.nombre,
+      rolid: rolusuario.nombre,
     });
   } catch (error) {
     next(error);

@@ -1,4 +1,4 @@
-const { producto, categoria, archivo, Sequelize } = require("../models");
+const { producto, categoria, archivo, sequelize, Sequelize } = require("../models");
 const Op = Sequelize.Op;
 const self = {};
 
@@ -99,15 +99,22 @@ self.create = async function (req, res, next) {
       }
     }
 
-    const data = await producto.create({
-      titulo: req.body.titulo.trim(),
-      descripcion: req.body.descripcion.trim(),
-      precio: req.body.precio,
-      archivoid,
+    const data = await sequelize.transaction(async (transaction) => {
+      const nuevo = await producto.create(
+        {
+          titulo: req.body.titulo.trim(),
+          descripcion: req.body.descripcion.trim(),
+          precio: req.body.precio,
+          archivoid,
+        },
+        { transaction },
+      );
+      if (categoriasEncontradas !== null) {
+        await nuevo.setCategorias(categoriasEncontradas, { transaction });
+      }
+      return nuevo;
     });
-    if (categoriasEncontradas !== null) {
-      await data.setCategorias(categoriasEncontradas);
-    }
+   
     await req.bitacora("producto.crear", data.id);
     res.status(201).json(data);
   } catch (error) {
@@ -153,18 +160,21 @@ self.update = async function (req, res, next) {
       }
     }
 
-    await producto.update(
-      {
-        titulo: req.body.titulo.trim(),
-        descripcion: req.body.descripcion.trim(),
-        precio: req.body.precio,
-        archivoid,
-      },
-      { where: { id } },
-    );
-    if (categoriasEncontradas !== null) {
-      await item.setCategorias(categoriasEncontradas);
+    const camposActualizar = {
+      titulo: req.body.titulo.trim(),
+      descripcion: req.body.descripcion.trim(),
+      precio: req.body.precio,
+    };
+    if (req.body.archivoid !== undefined) {
+      camposActualizar.archivoid = archivoid;
     }
+
+    await sequelize.transaction(async (transaction) => {
+      await producto.update(camposActualizar, { where: { id }, transaction });
+      if (categoriasEncontradas !== null) {
+        await item.setCategorias(categoriasEncontradas, { transaction });
+      }
+    });
     await req.bitacora("producto.editar", id);
     res.status(204).send();
   } catch (error) {
