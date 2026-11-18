@@ -8,7 +8,11 @@ const self = {};
 
 self.login = async function (req, res, next) {
   try {
-    const { email, password } = req.body;
+    const { email, password } = req.body || {};
+    if (!email || !password)
+      return res
+        .status(400)
+        .json({ mensaje: "El correo y la contraseña son obligatorios." });
     const data = await usuario.findOne({
       where: { email },
       raw: true,
@@ -30,16 +34,14 @@ self.login = async function (req, res, next) {
       return res
         .status(401)
         .json({ mensaje: "Usuario o contraseña incorrectos." });
-    const token = GeneraToken(data.email, data.nombre, data.rol);
+    const token = GeneraToken(data.email, data.nombre, data.rol, data.id);
     await req.bitacora("usuario.login", data.email);
-    res
-      .status(200)
-      .json({
-        email: data.email,
-        nombre: data.nombre,
-        rol: data.rol,
-        jwt: token,
-      });
+    res.status(200).json({
+      email: data.email,
+      nombre: data.nombre,
+      rol: data.rol,
+      jwt: token,
+    });
   } catch (error) {
     next(error);
   }
