@@ -114,6 +114,7 @@ self.create = async function (req, res, next) {
       }
       return nuevo;
     });
+   
     await req.bitacora("producto.crear", data.id);
     res.status(201).json(data);
   } catch (error) {
