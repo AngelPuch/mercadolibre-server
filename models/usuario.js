@@ -6,6 +6,13 @@ module.exports = (sequelize, DataTypes) => {
     static associate(models) {
       usuario.belongsTo(models.rol, { foreignKey: "rolid" });
     }
+
+    toJSON() {
+      const values = { ...this.get() };
+      delete values.passwordhash;
+      delete values.password;
+      return values;
+    }
   }
   usuario.init(
     {

@@ -24,7 +24,7 @@ self.getAll = async function (req, res, next) {
 self.get = async function (req, res, next) {
   try {
     const data = await usuario.findOne({
-      where: { email: req.params.email },
+      where: { email: req.params.email.trim() },
       raw: true,
       attributes: [
         "id",
@@ -43,24 +43,35 @@ self.get = async function (req, res, next) {
 
 self.create = async function (req, res, next) {
   try {
-    const rolusuario = await rol.findOne({ where: { nombre: req.body.rol } });
-    if (!rolusuario) return res.status(400).send();
+    const email = req.body.email.trim();
+    const existente = await usuario.findOne({ where: { email } });
+    if (existente) {
+      return res
+        .status(400)
+        .json({ mensaje: "El correo electrónico ya está registrado." });
+    }
+    const rolusuario = await rol.findOne({
+      where: { nombre: req.body.rol.trim() },
+    });
+    if (!rolusuario) {
+      return res
+        .status(400)
+        .json({ mensaje: "El rol especificado no es válido." });
+    }
     const data = await usuario.create({
       id: crypto.randomUUID(),
-      email: req.body.email,
+      email,
       passwordhash: await bcrypt.hash(req.body.password, 10),
-      nombre: req.body.nombre,
+      nombre: req.body.nombre.trim(),
       rolid: rolusuario.id,
     });
     await req.bitacora("usuarios.crear", data.email);
-    res
-      .status(201)
-      .json({
-        id: data.id,
-        email: data.email,
-        nombre: data.nombre,
-        rolid: rolusuario.nombre,
-      });
+    res.status(201).json({
+      id: data.id,
+      email: data.email,
+      nombre: data.nombre,
+      rol: rolusuario.nombre,
+    });
   } catch (error) {
     next(error);
   }
@@ -68,14 +79,28 @@ self.create = async function (req, res, next) {
 
 self.update = async function (req, res, next) {
   try {
-    const email = req.params.email;
-    const rolusuario = await rol.findOne({ where: { nombre: req.body.rol } });
-    if (!rolusuario) return res.status(400).send();
-    req.body.rolid = rolusuario.id;
-    if (req.body.password !== undefined)
-      req.body.passwordhash = await bcrypt.hash(req.body.password, 10);
-    const data = await usuario.update(req.body, { where: { email } });
-    if (data[0] === 0) return res.status(404).send();
+    const email = req.params.email.trim();
+    const existente = await usuario.findOne({ where: { email } });
+    if (!existente) return res.status(404).send();
+
+    const rolusuario = await rol.findOne({
+      where: { nombre: req.body.rol.trim() },
+    });
+    if (!rolusuario) {
+      return res
+        .status(400)
+        .json({ mensaje: "El rol especificado no es válido." });
+    }
+
+    const camposActualizar = {
+      nombre: req.body.nombre.trim(),
+      rolid: rolusuario.id,
+    };
+    if (req.body.password !== undefined) {
+      camposActualizar.passwordhash = await bcrypt.hash(req.body.password, 10);
+    }
+
+    await usuario.update(camposActualizar, { where: { email } });
     await req.bitacora("usuarios.editar", email);
     res.status(204).send();
   } catch (error) {
@@ -85,7 +110,7 @@ self.update = async function (req, res, next) {
 
 self.delete = async function (req, res, next) {
   try {
-    const email = req.params.email;
+    const email = req.params.email.trim();
     let data = await usuario.findOne({ where: { email } });
     if (!data) return res.status(404).send();
     if (data.protegido) return res.status(403).send();

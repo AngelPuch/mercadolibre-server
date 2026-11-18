@@ -1,9 +1,13 @@
 const { rol } = require('../models');
 const self = {};
 
-self.getAll = async function (req, res) {
-  const data = await rol.findAll({ attributes: ['id', 'nombre'] });
-  res.status(200).json(data);
+self.getAll = async function (req, res, next) {
+  try {
+    const data = await rol.findAll({ attributes: ['id', 'nombre'] });
+    res.status(200).json(data);
+  } catch (error) {
+    next(error);
+  }
 };
 
 module.exports = self;
