@@ -40,3 +40,47 @@ Los contadores se reinician al reiniciar el proceso y **no se comparten entre m�
 `POST /api/registro` conserva sus parsers JSON y URL-encoded de 8 KiB, separados del rate limiting y ejecutados antes de los parsers generales. Un cuerpo excesivo, JSON malformado o entrada inválida devuelve 400 sin incluir valores sensibles. El resto de endpoints conserva sus parsers generales.
 
 La creación del usuario y el evento `usuario.registro` se guardan dentro de la misma transacción Sequelize. `req.bitacora(accion, id, { transaction })` permite compartirla; las llamadas existentes de dos argumentos mantienen su comportamiento. Si falla cualquiera de las escrituras, ambas se revierten. El correo duplicado sigue devolviendo 409, incluso si la restricción única de la base de datos detecta un registro concurrente. El rol `Usuario`, bcrypt y las validaciones de B3 se conservan.
+
+## B6: carrito persistente
+
+La rama `feat/carrito` añade dos migraciones, sin modificar las anteriores ni usar `sync()`. Con Sequelize CLI disponible, se aplican con `sequelize db:migrate`, utilizando la configuración de `.sequelizerc` y `.env`.
+
+| Tabla | Campos y restricciones |
+| --- | --- |
+| `carrito` | `id` entero autoincremental; `usuarioid` UUID obligatorio, único y FK a `usuario.id`; timestamps. Un carrito por usuario. |
+| `carritoitem` | PK compuesta `(carritoid, productoid)`; FKs a `carrito.id` y `producto.id`; `cantidad` entera sin signo con CHECK entre 1 y 999; timestamps. |
+
+Las tablas usan InnoDB y las FKs aplican `ON DELETE CASCADE` y `ON UPDATE CASCADE`. Eliminar un usuario elimina su carrito y artículos; eliminar un producto lo retira de los carritos. Los modelos nuevos declaran las asociaciones necesarias sin modificar los modelos existentes.
+
+Todos los endpoints requieren `Authorization: Bearer <JWT>` y permiten los roles `Usuario` y `Administrador`. El propietario se obtiene exclusivamente de `req.decodedToken.sub`; no se admiten parámetros de consulta ni campos adicionales en el cuerpo, incluidos `usuarioId`, `carritoId`, precios y totales. La validación acepta enteros numéricos o su representación entera en texto para formularios, rechaza booleanos, arreglos y objetos, y limita la cantidad a 999. El límite compartido del código está en `config/carrito.js`; la migración conserva su restricción histórica explícita.
+
+| Método y ruta | Cuerpo permitido | Respuesta |
+| --- | --- | --- |
+| `GET /api/carrito` | Sin campos | 200 con `items` y `subtotal`; un carrito nuevo devuelve `{"items":[],"subtotal":"0.00"}` sin crear registros. |
+| `POST /api/carrito/items` | `{"productoId":1,"cantidad":2}` | 201 si agrega un artículo nuevo; 200 si acumula uno existente. Devuelve `{"productoId":1,"cantidad":2}` con la cantidad resultante. |
+| `PUT /api/carrito/items/1` | `{"cantidad":4}` | 204; establece la cantidad, sin sumarla. |
+| `DELETE /api/carrito/items/1` | Sin campos | 204; elimina únicamente el artículo propio. |
+
+Ejemplo de consulta:
+
+```json
+{
+  "items": [
+    {
+      "productoId": 1,
+      "titulo": "Producto de ejemplo",
+      "archivoid": null,
+      "cantidad": 2,
+      "precioUnitario": "19.90",
+      "subtotal": "39.80"
+    }
+  ],
+  "subtotal": "39.80"
+}
+```
+
+Los precios se leen siempre de `producto.precio`; no se almacenan precios congelados en el carrito. Los importes se calculan con centavos enteros usando `BigInt` y se devuelven como cadenas con dos decimales, evitando redondeos de punto flotante.
+
+Las escrituras bloquean la fila del usuario con `SELECT FOR UPDATE` dentro de una transacción. Así se serializa incluso la creación concurrente del primer carrito y la cantidad no pierde incrementos. La clave compuesta impide duplicados. Cada escritura y su bitácora comparten la transacción: si una falla, ambas se revierten. No se realizan reservas de inventario ni compras.
+
+Se devuelve 400 ante entradas inválidas, 401 sin JWT válido o propietario vigente, 403 para roles no permitidos, 404 si el producto no existe o el artículo no pertenece al carrito autenticado, y 409 si la acumulación excedería 999. Los errores internos del carrito se procesan por el manejador centralizado, con mensajes genéricos y sin SQL ni trazas, también en desarrollo. Swagger documenta los contratos completos.

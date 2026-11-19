@@ -1011,6 +1011,542 @@
           }
         }
       }
+    },
+    "/api/carrito/": {
+      "get": {
+        "tags": [
+          "Carrito"
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "security": [
+          {
+            "BearerJWT": []
+          }
+        ],
+        "summary": "Consultar el carrito propio",
+        "description": "No acepta query ni campos en el cuerpo. Sin carrito devuelve {\"items\":[],\"subtotal\":\"0.00\"}, sin crear una cabecera. Precios actuales de BD e importes calculados exactamente por el servidor; no incluye identificadores del propietario ni de carritos ajenos.",
+        "responses": {
+          "200": {
+            "description": "Artículos y subtotal del carrito propio.",
+            "schema": {
+              "$ref": "#/definitions/Carrito"
+            },
+            "examples": {
+              "application/json": {
+                "items": [
+                  {
+                    "productoId": 1,
+                    "titulo": "Producto de ejemplo",
+                    "archivoid": null,
+                    "cantidad": 2,
+                    "precioUnitario": "19.90",
+                    "subtotal": "39.80"
+                  }
+                ],
+                "subtotal": "39.80"
+              }
+            }
+          },
+          "400": {
+            "description": "Entrada inválida: cantidades fuera de 1..999, IDs inválidos, campos adicionales o parámetros de consulta. No se aceptan propietario, carrito ni importes del cliente.",
+            "schema": {
+              "$ref": "#/definitions/CarritoError"
+            },
+            "examples": {
+              "application/json": {
+                "mensaje": "La cantidad es obligatoria y debe ser un entero entre 1 y 999."
+              }
+            }
+          },
+          "401": {
+            "description": "JWT ausente o inválido, o usuario propietario inexistente.",
+            "schema": {
+              "$ref": "#/definitions/CarritoError"
+            }
+          },
+          "403": {
+            "description": "Rol distinto de Usuario o Administrador.",
+            "schema": {
+              "$ref": "#/definitions/CarritoError"
+            }
+          },
+          "500": {
+            "description": "Error interno sin detalles SQL ni trazas. Si falla una escritura o su bitácora, la transacción se revierte.",
+            "schema": {
+              "$ref": "#/definitions/CarritoError"
+            },
+            "examples": {
+              "application/json": {
+                "mensaje": "No se ha podido procesar el carrito. Inténtelo más tarde."
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/carrito/items": {
+      "post": {
+        "tags": [
+          "Carrito"
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "security": [
+          {
+            "BearerJWT": []
+          }
+        ],
+        "consumes": [
+          "application/json"
+        ],
+        "summary": "Agregar o acumular un producto",
+        "description": "Solo acepta productoId y cantidad. Crea el carrito al agregar el primer producto. Serializa las escrituras del propietario con bloqueo transaccional, sin duplicar artículos ni perder cantidades. La cantidad acumulada no puede superar 999.",
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/CarritoAgregar"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Artículo existente: cantidad acumulada.",
+            "schema": {
+              "$ref": "#/definitions/CarritoResultado"
+            },
+            "examples": {
+              "application/json": {
+                "productoId": 1,
+                "cantidad": 5
+              }
+            }
+          },
+          "201": {
+            "description": "Artículo nuevo agregado.",
+            "schema": {
+              "$ref": "#/definitions/CarritoResultado"
+            },
+            "examples": {
+              "application/json": {
+                "productoId": 1,
+                "cantidad": 2
+              }
+            }
+          },
+          "400": {
+            "description": "Entrada inválida: cantidades fuera de 1..999, IDs inválidos, campos adicionales o parámetros de consulta. No se aceptan propietario, carrito ni importes del cliente.",
+            "schema": {
+              "$ref": "#/definitions/CarritoError"
+            },
+            "examples": {
+              "application/json": {
+                "mensaje": "La cantidad es obligatoria y debe ser un entero entre 1 y 999."
+              }
+            }
+          },
+          "401": {
+            "description": "JWT ausente o inválido, o usuario propietario inexistente.",
+            "schema": {
+              "$ref": "#/definitions/CarritoError"
+            }
+          },
+          "403": {
+            "description": "Rol distinto de Usuario o Administrador.",
+            "schema": {
+              "$ref": "#/definitions/CarritoError"
+            }
+          },
+          "404": {
+            "description": "El producto no existe.",
+            "schema": {
+              "$ref": "#/definitions/CarritoError"
+            }
+          },
+          "409": {
+            "description": "La cantidad acumulada excedería 999; no se modifica el carrito.",
+            "schema": {
+              "$ref": "#/definitions/CarritoError"
+            },
+            "examples": {
+              "application/json": {
+                "status": 409,
+                "mensaje": "La cantidad acumulada no puede exceder 999."
+              }
+            }
+          },
+          "500": {
+            "description": "Error interno sin detalles SQL ni trazas. Si falla una escritura o su bitácora, la transacción se revierte.",
+            "schema": {
+              "$ref": "#/definitions/CarritoError"
+            },
+            "examples": {
+              "application/json": {
+                "mensaje": "No se ha podido procesar el carrito. Inténtelo más tarde."
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/carrito/items/{productoId}": {
+      "put": {
+        "tags": [
+          "Carrito"
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "security": [
+          {
+            "BearerJWT": []
+          }
+        ],
+        "consumes": [
+          "application/json"
+        ],
+        "summary": "Establecer la cantidad de un artículo propio",
+        "description": "Solo acepta cantidad. Establece el valor recibido, sin sumarlo. Un artículo que solo existe en otro carrito devuelve 404.",
+        "parameters": [
+          {
+            "name": "productoId",
+            "in": "path",
+            "required": true,
+            "type": "integer",
+            "format": "int32",
+            "minimum": 1,
+            "maximum": 2147483647,
+            "description": "Producto dentro del carrito del usuario autenticado."
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/CarritoCantidad"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Cantidad actualizada, sin cuerpo de respuesta."
+          },
+          "400": {
+            "description": "Entrada inválida: cantidades fuera de 1..999, IDs inválidos, campos adicionales o parámetros de consulta. No se aceptan propietario, carrito ni importes del cliente.",
+            "schema": {
+              "$ref": "#/definitions/CarritoError"
+            },
+            "examples": {
+              "application/json": {
+                "mensaje": "La cantidad es obligatoria y debe ser un entero entre 1 y 999."
+              }
+            }
+          },
+          "401": {
+            "description": "JWT ausente o inválido, o usuario propietario inexistente.",
+            "schema": {
+              "$ref": "#/definitions/CarritoError"
+            }
+          },
+          "403": {
+            "description": "Rol distinto de Usuario o Administrador.",
+            "schema": {
+              "$ref": "#/definitions/CarritoError"
+            }
+          },
+          "404": {
+            "description": "El artículo no está en el carrito propio.",
+            "schema": {
+              "$ref": "#/definitions/CarritoError"
+            }
+          },
+          "500": {
+            "description": "Error interno sin detalles SQL ni trazas. Si falla una escritura o su bitácora, la transacción se revierte.",
+            "schema": {
+              "$ref": "#/definitions/CarritoError"
+            },
+            "examples": {
+              "application/json": {
+                "mensaje": "No se ha podido procesar el carrito. Inténtelo más tarde."
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Carrito"
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "security": [
+          {
+            "BearerJWT": []
+          }
+        ],
+        "summary": "Eliminar un artículo propio",
+        "description": "No acepta query ni campos en el cuerpo. Solo afecta al carrito autenticado.",
+        "parameters": [
+          {
+            "name": "productoId",
+            "in": "path",
+            "required": true,
+            "type": "integer",
+            "format": "int32",
+            "minimum": 1,
+            "maximum": 2147483647,
+            "description": "Producto dentro del carrito del usuario autenticado."
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Artículo eliminado, sin cuerpo de respuesta."
+          },
+          "400": {
+            "description": "Entrada inválida: cantidades fuera de 1..999, IDs inválidos, campos adicionales o parámetros de consulta. No se aceptan propietario, carrito ni importes del cliente.",
+            "schema": {
+              "$ref": "#/definitions/CarritoError"
+            },
+            "examples": {
+              "application/json": {
+                "mensaje": "La cantidad es obligatoria y debe ser un entero entre 1 y 999."
+              }
+            }
+          },
+          "401": {
+            "description": "JWT ausente o inválido, o usuario propietario inexistente.",
+            "schema": {
+              "$ref": "#/definitions/CarritoError"
+            }
+          },
+          "403": {
+            "description": "Rol distinto de Usuario o Administrador.",
+            "schema": {
+              "$ref": "#/definitions/CarritoError"
+            }
+          },
+          "404": {
+            "description": "El artículo no está en el carrito propio.",
+            "schema": {
+              "$ref": "#/definitions/CarritoError"
+            }
+          },
+          "500": {
+            "description": "Error interno sin detalles SQL ni trazas. Si falla una escritura o su bitácora, la transacción se revierte.",
+            "schema": {
+              "$ref": "#/definitions/CarritoError"
+            },
+            "examples": {
+              "application/json": {
+                "mensaje": "No se ha podido procesar el carrito. Inténtelo más tarde."
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "securityDefinitions": {
+    "BearerJWT": {
+      "type": "apiKey",
+      "name": "Authorization",
+      "in": "header",
+      "description": "JWT válido con el formato Bearer <token>. Roles Usuario o Administrador; propietario obtenido exclusivamente del claim sub."
+    }
+  },
+  "definitions": {
+    "CarritoItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "productoId",
+        "titulo",
+        "archivoid",
+        "cantidad",
+        "precioUnitario",
+        "subtotal"
+      ],
+      "properties": {
+        "productoId": {
+          "type": "integer",
+          "format": "int32",
+          "minimum": 1,
+          "maximum": 2147483647,
+          "example": 1
+        },
+        "titulo": {
+          "type": "string"
+        },
+        "archivoid": {
+          "type": "integer",
+          "x-nullable": true
+        },
+        "cantidad": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 999,
+          "example": 2
+        },
+        "precioUnitario": {
+          "type": "string",
+          "pattern": "^-?\\d+\\.\\d{2}$",
+          "example": "19.90",
+          "description": "Importe decimal exacto con dos decimales, calculado por el servidor a partir del precio actual de la BD."
+        },
+        "subtotal": {
+          "type": "string",
+          "pattern": "^-?\\d+\\.\\d{2}$",
+          "example": "39.80",
+          "description": "Importe decimal exacto con dos decimales, calculado por el servidor a partir del precio actual de la BD."
+        }
+      }
+    },
+    "Carrito": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "items",
+        "subtotal"
+      ],
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/CarritoItem"
+          }
+        },
+        "subtotal": {
+          "type": "string",
+          "pattern": "^-?\\d+\\.\\d{2}$",
+          "example": "39.80",
+          "description": "Importe decimal exacto con dos decimales, calculado por el servidor a partir del precio actual de la BD."
+        }
+      },
+      "example": {
+        "items": [
+          {
+            "productoId": 1,
+            "titulo": "Producto de ejemplo",
+            "archivoid": null,
+            "cantidad": 2,
+            "precioUnitario": "19.90",
+            "subtotal": "39.80"
+          }
+        ],
+        "subtotal": "39.80"
+      }
+    },
+    "CarritoAgregar": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "productoId",
+        "cantidad"
+      ],
+      "properties": {
+        "productoId": {
+          "type": "integer",
+          "format": "int32",
+          "minimum": 1,
+          "maximum": 2147483647,
+          "example": 1
+        },
+        "cantidad": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 999,
+          "example": 2
+        }
+      },
+      "example": {
+        "productoId": 1,
+        "cantidad": 2
+      }
+    },
+    "CarritoCantidad": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cantidad"
+      ],
+      "properties": {
+        "cantidad": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 999,
+          "example": 2
+        }
+      },
+      "example": {
+        "cantidad": 4
+      }
+    },
+    "CarritoResultado": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "productoId",
+        "cantidad"
+      ],
+      "properties": {
+        "productoId": {
+          "type": "integer",
+          "format": "int32",
+          "minimum": 1,
+          "maximum": 2147483647,
+          "example": 1
+        },
+        "cantidad": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 999,
+          "example": 2
+        }
+      },
+      "example": {
+        "productoId": 1,
+        "cantidad": 2
+      }
+    },
+    "CarritoError": {
+      "type": "object",
+      "required": [
+        "mensaje"
+      ],
+      "properties": {
+        "mensaje": {
+          "type": "string"
+        },
+        "status": {
+          "type": "integer"
+        },
+        "errores": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "msg": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "location": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
     }
   }
 }
