@@ -7,6 +7,7 @@ const errorHandler = (err, req, res, next) => {
     err instanceof SyntaxError && err.status === 400 && "body" in err;
   const esRegistroPublico = req.registroPublico === true;
   const esCarrito = req.carritoPrivado === true;
+  const esPedido = req.pedidoPrivado === true;
   const esRateLimit = err.statusCode === 429 || err.status === 429;
   const errorEntradaRegistro =
     esRegistroPublico && err.status >= 400 && err.status < 500;
@@ -25,6 +26,8 @@ const errorHandler = (err, req, res, next) => {
   if (esRegistroPublico) detalleLog = "Error en registro público.";
   if (esCarrito && statusCode >= 500)
     detalleLog = "Error al procesar el carrito.";
+  if (esPedido && statusCode >= 500)
+    detalleLog = "Error al confirmar el pedido.";
   if (esRateLimit) detalleLog = "Límite de solicitudes alcanzado.";
   fs.appendFile(
     "log/log.txt",
@@ -43,6 +46,12 @@ const errorHandler = (err, req, res, next) => {
   if (esCarrito && statusCode >= 500) {
     return res.status(statusCode).json({
       mensaje: "No se ha podido procesar el carrito. Inténtelo más tarde.",
+    });
+  }
+
+  if (esPedido && statusCode >= 500) {
+    return res.status(statusCode).json({
+      mensaje: "No se ha podido confirmar el pedido. Inténtelo más tarde.",
     });
   }
 

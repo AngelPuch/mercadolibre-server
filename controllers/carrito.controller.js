@@ -6,6 +6,11 @@ const {
   sequelize,
 } = require("../models");
 const { MAX_CANTIDAD } = require("../config/carrito");
+const { bloquearPropietario } = require("../services/carrito.service");
+const {
+  precioEnCentavos,
+  formatearImporte,
+} = require("../services/importes.service");
 const self = {};
 
 const errorHttp = (statusCode, mensaje) => {
@@ -19,12 +24,7 @@ const obtenerCarritoParaEscritura = async (
   transaction,
   crear = false,
 ) => {
-  const propietario = await usuario.findByPk(usuarioid, {
-    attributes: ["id"],
-    transaction,
-    lock: transaction.LOCK.UPDATE,
-  });
-  if (!propietario) throw errorHttp(401, "Acceso denegado.");
+  await bloquearPropietario(usuarioid, transaction);
 
   let actual = await carrito.findOne({ where: { usuarioid }, transaction });
   if (!actual && crear) {
@@ -32,18 +32,6 @@ const obtenerCarritoParaEscritura = async (
   }
   if (!actual) throw errorHttp(404, "El artículo no está en el carrito.");
   return actual;
-};
-
-const precioEnCentavos = (precio) => {
-  const valor = String(precio);
-  const [entero, fraccion = ""] = valor.replace(/^-/, "").split(".");
-  const centavos = BigInt(entero) * 100n + BigInt(fraccion.padEnd(2, "0"));
-  return valor.startsWith("-") ? -centavos : centavos;
-};
-
-const formatearImporte = (centavos) => {
-  const absoluto = centavos < 0n ? -centavos : centavos;
-  return `${centavos < 0n ? "-" : ""}${absoluto / 100n}.${String(absoluto % 100n).padStart(2, "0")}`;
 };
 
 self.get = async function (req, res, next) {

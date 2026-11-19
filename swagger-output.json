@@ -1350,6 +1350,118 @@
           }
         }
       }
+    },
+    "/api/pedidos/": {
+      "post": {
+        "tags": [
+          "Pedidos"
+        ],
+        "summary": "Confirmar el carrito propio y generar un pedido",
+        "description": "Requiere Usuario o Administrador. El comprador se obtiene exclusivamente del sub del JWT. Se envía sin cuerpo o con {}: no acepta query, usuarioId, carritoId, items, estado ni importes. Lee cantidades del carrito y precios actuales de BD; guarda una instantánea de cantidades e importes. Pedido, detalles, vaciado del carrito y bitácora comparten una transacción. El mismo bloqueo de propietario que B6 serializa confirmaciones y cambios del carrito: las solicitudes simultáneas sobre el mismo carrito no generan pedidos duplicados; tras confirmar, otro intento sin nuevos artículos devuelve 409. No procesa pagos, envíos ni inventario.",
+        "security": [
+          {
+            "BearerJWT": []
+          }
+        ],
+        "consumes": [
+          "application/json"
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": false,
+            "description": "Omitir el cuerpo o enviar un objeto vacío.",
+            "schema": {
+              "type": "object",
+              "maxProperties": 0,
+              "additionalProperties": false,
+              "example": {}
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Pedido confirmado y carrito vaciado después de completar la transacción.",
+            "schema": {
+              "$ref": "#/definitions/PedidoConfirmado"
+            },
+            "examples": {
+              "application/json": {
+                "pedidoId": 1,
+                "fecha": "2026-11-18T18:00:00.000Z",
+                "estado": "Confirmado",
+                "total": "40.32",
+                "items": [
+                  {
+                    "productoId": 1,
+                    "titulo": "Producto de ejemplo",
+                    "cantidad": 2,
+                    "precioUnitario": "20.01",
+                    "subtotal": "40.02"
+                  },
+                  {
+                    "productoId": 2,
+                    "titulo": "Otro producto",
+                    "cantidad": 3,
+                    "precioUnitario": "0.10",
+                    "subtotal": "0.30"
+                  }
+                ]
+              }
+            }
+          },
+          "400": {
+            "description": "Campos o parámetros no permitidos, cuerpo inválido o JSON malformado. La validación no devuelve valores enviados por el cliente.",
+            "schema": {
+              "$ref": "#/definitions/PedidoError"
+            },
+            "examples": {
+              "application/json": {
+                "mensaje": "La confirmación no acepta campos en el cuerpo."
+              }
+            }
+          },
+          "401": {
+            "description": "JWT ausente, inválido o comprador inexistente.",
+            "schema": {
+              "$ref": "#/definitions/PedidoError"
+            }
+          },
+          "403": {
+            "description": "Rol distinto de Usuario o Administrador.",
+            "schema": {
+              "$ref": "#/definitions/PedidoError"
+            }
+          },
+          "409": {
+            "description": "Carrito vacío, productos no disponibles o cantidades/precios del carrito no válidos. No se crea el pedido ni se vacía el carrito.",
+            "schema": {
+              "$ref": "#/definitions/PedidoError"
+            },
+            "examples": {
+              "application/json": {
+                "status": 409,
+                "mensaje": "El carrito está vacío."
+              }
+            }
+          },
+          "500": {
+            "description": "Error interno sin SQL ni trazas, también en desarrollo. Todas las escrituras se revierten y el carrito conserva sus artículos.",
+            "schema": {
+              "$ref": "#/definitions/PedidoError"
+            },
+            "examples": {
+              "application/json": {
+                "mensaje": "No se ha podido confirmar el pedido. Inténtelo más tarde."
+              }
+            }
+          }
+        }
+      }
     }
   },
   "securityDefinitions": {
@@ -1515,6 +1627,144 @@
       }
     },
     "CarritoError": {
+      "type": "object",
+      "required": [
+        "mensaje"
+      ],
+      "properties": {
+        "mensaje": {
+          "type": "string"
+        },
+        "status": {
+          "type": "integer"
+        },
+        "errores": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "msg": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "location": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "PedidoResumenItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "productoId",
+        "titulo",
+        "cantidad",
+        "precioUnitario",
+        "subtotal"
+      ],
+      "properties": {
+        "productoId": {
+          "type": "integer",
+          "format": "int32",
+          "minimum": 1
+        },
+        "titulo": {
+          "type": "string"
+        },
+        "cantidad": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 999
+        },
+        "precioUnitario": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d{2}$",
+          "example": "20.01",
+          "description": "Importe exacto con dos decimales, calculado en centavos enteros y persistido como DECIMAL."
+        },
+        "subtotal": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d{2}$",
+          "example": "40.02",
+          "description": "Importe exacto con dos decimales, calculado en centavos enteros y persistido como DECIMAL."
+        }
+      }
+    },
+    "PedidoConfirmado": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pedidoId",
+        "fecha",
+        "estado",
+        "total",
+        "items"
+      ],
+      "properties": {
+        "pedidoId": {
+          "type": "integer",
+          "format": "int32",
+          "minimum": 1,
+          "example": 1
+        },
+        "fecha": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Fecha de creación en formato ISO 8601."
+        },
+        "estado": {
+          "type": "string",
+          "enum": [
+            "Confirmado"
+          ],
+          "example": "Confirmado"
+        },
+        "total": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d{2}$",
+          "example": "40.32",
+          "description": "Importe exacto con dos decimales, calculado en centavos enteros y persistido como DECIMAL."
+        },
+        "items": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/PedidoResumenItem"
+          }
+        }
+      },
+      "example": {
+        "pedidoId": 1,
+        "fecha": "2026-11-18T18:00:00.000Z",
+        "estado": "Confirmado",
+        "total": "40.32",
+        "items": [
+          {
+            "productoId": 1,
+            "titulo": "Producto de ejemplo",
+            "cantidad": 2,
+            "precioUnitario": "20.01",
+            "subtotal": "40.02"
+          },
+          {
+            "productoId": 2,
+            "titulo": "Otro producto",
+            "cantidad": 3,
+            "precioUnitario": "0.10",
+            "subtotal": "0.30"
+          }
+        ]
+      }
+    },
+    "PedidoError": {
       "type": "object",
       "required": [
         "mensaje"
