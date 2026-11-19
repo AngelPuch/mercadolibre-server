@@ -84,3 +84,61 @@ Los precios se leen siempre de `producto.precio`; no se almacenan precios congel
 Las escrituras bloquean la fila del usuario con `SELECT FOR UPDATE` dentro de una transacción. Así se serializa incluso la creación concurrente del primer carrito y la cantidad no pierde incrementos. La clave compuesta impide duplicados. Cada escritura y su bitácora comparten la transacción: si una falla, ambas se revierten. No se realizan reservas de inventario ni compras.
 
 Se devuelve 400 ante entradas inválidas, 401 sin JWT válido o propietario vigente, 403 para roles no permitidos, 404 si el producto no existe o el artículo no pertenece al carrito autenticado, y 409 si la acumulación excedería 999. Los errores internos del carrito se procesan por el manejador centralizado, con mensajes genéricos y sin SQL ni trazas, también en desarrollo. Swagger documenta los contratos completos.
+
+## B7: confirmar compra
+
+`POST /api/pedidos` confirma el carrito del usuario identificado exclusivamente por `req.decodedToken.sub`. Requiere un JWT válido y rol `Usuario` o `Administrador`. No acepta parámetros de consulta ni campos del cliente: se omite el cuerpo o se envía `{}`. No se implementa `GET /api/pedidos` ni se procesan pagos, envíos o inventario.
+
+```http
+POST /api/pedidos
+Authorization: Bearer <JWT>
+Content-Type: application/json
+
+{}
+```
+
+Un ejemplo de respuesta 201 es:
+
+```json
+{
+  "pedidoId": 1,
+  "fecha": "2026-11-18T18:00:00.000Z",
+  "estado": "Confirmado",
+  "total": "40.32",
+  "items": [
+    {
+      "productoId": 1,
+      "titulo": "Producto de ejemplo",
+      "cantidad": 2,
+      "precioUnitario": "20.01",
+      "subtotal": "40.02"
+    },
+    {
+      "productoId": 2,
+      "titulo": "Otro producto",
+      "cantidad": 3,
+      "precioUnitario": "0.10",
+      "subtotal": "0.30"
+    }
+  ]
+}
+```
+
+Se añaden las migraciones `20261118000300-create-pedido.js` y `20261118000400-create-pedidodetalle.js`. Con Sequelize CLI disponible, se aplican con `sequelize db:migrate`, sin modificar migraciones anteriores ni ejecutar `sync()`.
+
+| Tabla | Estructura principal |
+| --- | --- |
+| `pedido` | ID entero autoincremental; `usuarioid` UUID con FK; `total DECIMAL(24,2)` positivo; `estado ENUM('Confirmado')` con valor inicial `Confirmado`; timestamps. |
+| `pedidodetalle` | ID entero autoincremental; `pedidoid` FK obligatoria; `productoid` FK; cantidad entera de 1 a 999; `preciounitario DECIMAL(10,2)` positivo; `subtotal DECIMAL(24,2)`; timestamps. |
+
+La base de datos impide repetir el mismo producto en un pedido y exige `subtotal = cantidad * preciounitario`. Los importes se calculan con `BigInt` en centavos usando las mismas funciones que B6. Las cantidades y precios confirmados quedan almacenados; cambios posteriores al producto no cambian el pedido.
+
+Eliminar un pedido elimina sus detalles por cascada. Las referencias al usuario y al producto permiten `NULL` y usan `ON DELETE SET NULL`: se conserva el historial de importes cuando se elimina uno de esos registros y no se bloquean los borrados administrativos existentes. Durante la confirmación ambos registros deben existir; estas referencias nunca se reciben del cliente. El título de producto se incluye en el resumen de creación a partir de la BD vigente, pero no se añade una copia de ese texto al detalle persistido.
+
+La transacción toma primero el mismo bloqueo `FOR UPDATE` del propietario utilizado por B6, reutilizado mediante `services/carrito.service.js`. Después lee el carrito y toma bloqueos compartidos sobre los productos en orden de ID, para leer precios actuales y mantenerlos estables durante la confirmación. Los productos se bloquean antes de modificar los artículos, conservando el orden de bloqueos de B6. Pedido, detalles, vaciado de artículos y evento `pedido.confirmar` se confirman o revierten juntos; la cabecera del carrito se conserva vacía.
+
+Dos confirmaciones simultáneas del mismo carrito se serializan: una crea el pedido y las siguientes encuentran el carrito vacío y devuelven 409. Los cambios concurrentes de B6 se ordenan con la misma regla; si se agregan artículos después de una compra, permanecen en el carrito para una nueva confirmación.
+
+Se devuelve 400 por entradas no permitidas, 401 por JWT inválido o comprador inexistente, 403 por rol no permitido, 409 por carrito vacío o productos/cantidades/precios no válidos, y 500 por un fallo interno con rollback. El manejador central oculta SQL y trazas de los errores internos de B7, también en desarrollo. Swagger incluye la solicitud, el resumen de respuesta y estos errores.
+
+Para comprobar el flujo: inicia sesión, agrega artículos mediante B6, ejecuta el POST anterior y consulta `GET /api/carrito`, que debe quedar vacío. Repetir la confirmación sin agregar artículos debe devolver 409. El repositorio todavía no tiene una suite automatizada configurada: su script `npm test` únicamente muestra `Error: no test specified` y termina con código 1.

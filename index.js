@@ -29,6 +29,7 @@ app.use("/api/usuarios", require("./routes/usuarios.routes"));
 app.use("/api/roles", require("./routes/roles.routes"));
 app.use("/api/auth", require("./routes/auth.routes"));
 app.use("/api/carrito", require("./routes/carrito.routes"));
+app.use("/api/pedidos", require("./routes/pedidos.routes"));
 app.use("/api/archivos", require("./routes/archivos.routes"));
 app.use("/api/bitacora", require("./routes/bitacora.routes"));
 app.get("/*splat", (req, res) => res.status(404).send("Recurso no encontrado"));
